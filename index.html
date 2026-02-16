@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GEAR RUN: OMEGA</title>
+<style>
+    /* --- SYSTEM RESET & FONTS --- */
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+    
+    :root {
+        --c-neon-blue: #0ff;
+        --c-neon-pink: #f0f;
+        --c-neon-green: #0f0;
+        --c-void: #050510;
+        --c-grid: rgba(0, 255, 255, 0.1);
+        --font-main: 'Orbitron', sans-serif;
+    }
+
+    * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+    
+    body {
+        margin: 0;
+        height: 100vh;
+        background: var(--c-void);
+        overflow: hidden;
+        font-family: var(--font-main);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    /* --- CRT SCREEN EFFECTS --- */
+    #crt-overlay {
+        position: fixed; inset: 0; pointer-events: none; z-index: 999;
+        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+        background-size: 100% 2px, 3px 100%;
+        animation: flicker 0.15s infinite;
+    }
+    
+    @keyframes flicker { 0% { opacity: 0.9; } 50% { opacity: 1.0; } 100% { opacity: 0.9; } }
+
+    /* --- GAME CONTAINER --- */
+    #viewport {
+        position: relative;
+        width: 100%; height: 100%;
+        max-width: 1280px; max-height: 720px;
+        background: #000;
+        box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+        border: 1px solid #333;
+    }
+
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* --- UI LAYERS --- */
+    .ui-layer {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        z-index: 10;
+        transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        text-align: center;
+        color: white;
+    }
+    
+    .hidden { opacity: 0; pointer-events: none; transform: scale(1.1); }
+
+    /* --- TYPOGRAPHY --- */
+    h1 {
+        font-size: 6rem; margin: 0;
+        background: linear-gradient(to bottom, #fff, #888);
+        -webkit-background-clip: text; color: transparent;
+        text-shadow: 0 0 30px var(--c-neon-blue);
+        letter-spacing: -2px;
+        transform: skewX(-10deg);
+    }
+
+    h2 { color: var(--c-neon-pink); text-shadow: 0 0 10px var(--c-neon-pink); margin-bottom: 2rem; }
+
+    /* --- BUTTONS --- */
+    .btn {
+        background: rgba(0, 255, 255, 0.1);
+        border: 2px solid var(--c-neon-blue);
+        color: var(--c-neon-blue);
+        padding: 1rem 3rem;
+        font-family: var(--font-main);
+        font-size: 1.5rem;
+        font-weight: bold;
+        cursor: pointer;
+        margin: 10px;
+        transition: 0.2s;
+        text-transform: uppercase;
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    
+    .btn:hover {
+        background: var(--c-neon-blue);
+        color: #000;
+        box-shadow: 0 0 30px var(--c-neon-blue);
+    }
+
+    /* --- HUD --- */
+    #hud {
+        justify-content: flex-start; align-items: flex-start;
+        padding: 30px; pointer-events: none;
+    }
+    
+    .stat-row { display: flex; gap: 40px; font-size: 1.2rem; }
+    .stat { display: flex; flex-direction: column; align-items: flex-start; }
+    .stat label { font-size: 0.7rem; color: #888; margin-bottom: 5px; }
+    .stat span { font-size: 1.5rem; text-shadow: 0 0 10px currentColor; }
+
+    /* --- SHOP GRID --- */
+    #shop-ui { background: rgba(0,0,0,0.95); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 800px; }
+    .card {
+        border: 1px solid #333; padding: 20px;
+        background: linear-gradient(45deg, rgba(255,255,255,0.05), transparent);
+        cursor: pointer; transition: 0.3s;
+    }
+    .card:hover { border-color: var(--c-neon-green); transform: translateY(-5px); }
+    .card.bought { opacity: 0.5; border-color: #555; }
+    .card.equipped { border-color: var(--c-neon-blue); box-shadow: inset 0 0 20px rgba(0,255,255,0.2); }
+
+</style>
+</head>
+<body>
+
+<div id="crt-overlay"></div>
+
+<div id="viewport">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="menu-layer" class="ui-layer">
+        <h1>GEAR RUN</h1>
+        <div style="font-size: 1.2rem; letter-spacing: 5px; margin-bottom: 30px; color: #aaa;">OMEGA PROTOCOL</div>
+        <div>
+            <button class="btn" onclick="Core.start()">INITIATE</button>
+            <button class="btn" onclick="UI.openShop()">ARMORY</button>
+        </div>
+    </div>
+
+    <div id="hud-layer" class="ui-layer hidden" style="pointer-events: none;">
+        <div id="hud">
+            <div class="stat-row">
+                <div class="stat">
+                    <label>SCORE</label>
+                    <span id="ui-score" style="color:white">000000</span>
+                </div>
+                <div class="stat">
+                    <label>INTEGRITY</label>
+                    <span id="ui-hp" style="color:var(--c-neon-pink)">100%</span>
+                </div>
+                <div class="stat">
+                    <label>CREDITS</label>
+                    <span id="ui-credits" style="color:var(--c-neon-green)">0</span>
+                </div>
+            </div>
+        </div>
+        <div style="margin-top: auto; width: 100%; height: 50%; display: flex;">
+            <div id="touch-l" style="flex:1; border-right:1px solid rgba(255,255,255,0.1)"></div>
+            <div id="touch-r" style="flex:1;"></div>
+        </div>
+    </div>
+
+    <div id="shop-layer" class="ui-layer hidden">
+        <h2>ARMORY</h2>
+        <div style="width:100%; max-width:900px;">
+    <h3 style="color:#0ff; margin-bottom:10px;">FRAMES / SKINS</h3>
+    <div class="grid" id="shop-skins"></div>
+
+    <h3 style="color:#0ff; margin:40px 0 10px;">SYSTEM UPGRADES / SKILLS</h3>
+    <div class="grid" id="shop-skills"></div>
+</div>
+
+        <button class="btn" onclick="UI.closeShop()" style="margin-top:30px">EXIT</button>
+    </div>
+
+    <div id="over-layer" class="ui-layer hidden">
+        <h1 style="color:var(--c-neon-pink); text-shadow:0 0 30px red">CRITICAL ERROR</h1>
+        <p>SYSTEM HALTED. FINAL SCORE: <span id="final-score">0</span></p>
+        <button class="btn" onclick="Core.reset()">REBOOT</button>
+        <button class="btn" onclick="UI.toMenu()">MENU</button>
+    </div>
+</div>
+
+<script>
+/** * GEAR RUN: OMEGA
+ * A High-Performance Canvas Engine
+ * Step 1: Core Systems, Audio, Input
+ */
+
+// --- CONFIGURATION ---
+const CFG = {
+    GRAVITY: 0.5,
+    TERMINAL_VELOCITY: 15,
+    JUMP_FORCE: -12,
+    DOUBLE_JUMP_FORCE: -10,
+    SPEED_START: 8,
+    SPEED_MAX: 20,
+    SPEED_ACCEL: 0.002,
+    LANE_Y: 0, // Set dynamically
+    DEBUG: false
+};
+
+const MOON_STAGES = [
+    { at: 0,   type: 'solid', color: '#ff0055' },   // red
+    { at: 50,  type: 'solid', color: '#00ccff' },   // blue
+    { at: 100, type: 'solid', color: '#b400ff' },   // purple
+    { at: 150, type: 'solid', color: '#ffea00' },   // yellow
+    { at: 200, type: 'solid', color: '#00ff55' },   // green
+    { at: 250, type: 'solid', color: '#ff8800' },   // orange
+    { at: 300, type: 'solid', color: '#b400ff' },   // purple
+    { at: 350, type: 'solid', color: '#000000' },   // black
+    { at: 400, type: 'solid', color: '#ffffff' },   // white
+    { at: 450, type: 'solid', color: '#0033aa' },   // dark blue
+    { at: 500, type: 'solid', color: '#ff66cc' },   // pink
+    { at: 550, type: 'solid', color: '#7b4a12' },   // brown
+    { at: 600, type: 'solid', color: '#8b0000' },   // dark red
+    { at: 700, type: 'rainbow' },                   // rainbow
+    { at: 800, type: 'gradient' }                   // red + black gradient
+];
+
+
+// --- AUDIO SYNTHESIZER (Web Audio API) ---
+class AudioCore {
+    constructor() {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = 0.3;
+        this.master.connect(this.ctx.destination);
+        
+        this.isPlaying = false;
+        this.sequencerTimer = null;
+        this.beat = 0;
+    }
+
+    resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
+
+    playTone(freq, type, dur, vol = 1, slide = 0) {
+        this.resume();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        if(slide !== 0) {
+            osc.frequency.linearRampToValueAtTime(freq + slide, this.ctx.currentTime + dur);
+        }
+
+        gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+
+        osc.connect(gain);
+        gain.connect(this.master);
+        
+        osc.start();
+        osc.stop(this.ctx.currentTime + dur);
+    }
+
+    // SFX Library
+    sfxJump() { this.playTone(300, 'square', 0.1, 0.4, 200); }
+    sfxDash() { 
+        // White noise burst
+        const bufferSize = this.ctx.sampleRate * 0.2; // 0.2 sec
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.2);
+        
+        noise.connect(gain);
+        gain.connect(this.master);
+        noise.start();
+    }
+    sfxCoin() { this.playTone(1200, 'sine', 0.1, 0.3); setTimeout(()=>this.playTone(1800,'sine',0.2,0.3), 50); }
+    sfxCrash() { this.playTone(100, 'sawtooth', 0.5, 0.8, -50); }
+
+    // Music Sequencer
+    startMusic() {
+        if(this.isPlaying) return;
+        this.isPlaying = true;
+        this.beat = 0;
+        this.sequencerTimer = setInterval(() => this.step(), 120); // 125 BPM
+    }
+
+    stopMusic() {
+        this.isPlaying = false;
+        clearInterval(this.sequencerTimer);
+    }
+
+    step() {
+        const t = this.ctx.currentTime;
+        // Kick (Every 4 beats)
+        if(this.beat % 4 === 0) {
+            this.playTone(60, 'square', 0.1, 0.6, -20);
+        }
+        // Bass (Off beat)
+        if(this.beat % 4 === 2) {
+            this.playTone(40, 'sine', 0.2, 0.5);
+        }
+        // Hi-hat (Every beat)
+        const hatOsc = this.ctx.createOscillator();
+        const hatGain = this.ctx.createGain();
+        hatOsc.frequency.setValueAtTime(8000, t);
+        hatOsc.type = 'triangle';
+        hatGain.gain.setValueAtTime(0.05, t);
+        hatGain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+        hatOsc.connect(hatGain); hatGain.connect(this.master);
+        hatOsc.start(); hatOsc.stop(t+0.05);
+
+        // Melody (Simple Arp)
+        if(this.beat % 8 === 0) this.playTone(440, 'triangle', 0.1, 0.1);
+        if(this.beat % 8 === 2) this.playTone(554, 'triangle', 0.1, 0.1); // C#
+        if(this.beat % 8 === 4) this.playTone(659, 'triangle', 0.1, 0.1); // E
+
+        this.beat++;
+    }
+}
+
+// --- INPUT HANDLER ---
+class InputSystem {
+    constructor() {
+        this.keys = { up: false, down: false, dash: false };
+        this.pressed = { up: false, dash: false }; // Single frame triggers
+        
+        this.bindKeys();
+        this.bindTouch();
+    }
+
+    bindKeys() {
+        window.addEventListener('keydown', e => {
+            const k = e.code;
+            if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') {
+                if (!this.keys.up) this.pressed.up = true;
+                this.keys.up = true;
+            }
+            if (k === 'ArrowDown' || k === 'KeyS') this.keys.down = true;
+            if (k === 'ShiftLeft' || k === 'KeyD') {
+                if (!this.keys.dash) this.pressed.dash = true;
+                this.keys.dash = true;
+            }
+        });
+        window.addEventListener('keyup', e => {
+            const k = e.code;
+            if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') this.keys.up = false;
+            if (k === 'ArrowDown' || k === 'KeyS') this.keys.down = false;
+            if (k === 'ShiftLeft' || k === 'KeyD') this.keys.dash = false;
+        });
+    }
+
+    bindTouch() {
+        const l = document.getElementById('touch-l');
+        const r = document.getElementById('touch-r');
+
+        // Right side = Jump
+        r.addEventListener('touchstart', (e) => { e.preventDefault(); if(!this.keys.up) this.pressed.up = true; this.keys.up = true; });
+        r.addEventListener('touchend', (e) => { e.preventDefault(); this.keys.up = false; });
+        
+        // Left side = Dash / Slide
+        l.addEventListener('touchstart', (e) => { e.preventDefault(); this.keys.down = true; });
+        l.addEventListener('touchend', (e) => { e.preventDefault(); this.keys.down = false; });
+    }
+
+    update(dt = 1) {
+        // Clear "pressed" flags at end of frame
+        this.pressed.up = false;
+        this.pressed.dash = false;
+    }
+}
+
+// Instantiate Global Systems
+const Audio = new AudioCore();
+const Input = new InputSystem();
+// --- GRAPHICS ENGINE & VISUALS ---
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false }); // Performance optimization
+
+// --- 2. RESIZE HANDLER (Hi-DPI Support) ---
+let W, H, SCALE;
+
+function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // RESET + SCALE
+
+    SCALE = Math.min(W / 1280, H / 720);
+    CFG.LANE_Y = H * 0.75;
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+// --- 3. PARTICLE SYSTEM (VFX) ---
+const VFX_TYPES = {
+    SPARK: 0,   // Jump/Land
+    TRAIL: 1,   // Dash
+    EXPLOSION: 2, // Death
+    DUST: 3     // Running
+};
+
+class Particle {
+    constructor(x, y, color, type) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.type = type;
+        this.life = 1.0;
+        this.decay = Math.random() * 0.03 + 0.02;
+        
+        // Physics
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.size = Math.random() * 4 + 2;
+
+        if (type === VFX_TYPES.TRAIL) {
+            this.vx = -10; // Move left quickly
+            this.vy = (Math.random() - 0.5);
+            this.decay = 0.08;
+            this.size = 2;
+        } else if (type === VFX_TYPES.DUST) {
+            this.vy = -1; // Float up slightly
+            this.vx = -CFG.SPEED_START;
+            this.color = '#555';
+        }
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+        
+        // Gravity for sparks
+        if (this.type === VFX_TYPES.SPARK) this.vy += 0.2;
+    }
+
+    draw(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        
+        if (this.type === VFX_TYPES.EXPLOSION) {
+            // Draw expanding ring
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, (1-this.life)*40, 0, Math.PI*2);
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        } else {
+            // Draw square/circle
+            ctx.fillRect(this.x, this.y, this.size, this.size);
+        }
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class ParticleSystem {
+    constructor() {
+        this.particles = [];
+    }
+
+    emit(x, y, color, count, type = VFX_TYPES.SPARK) {
+    if (this.particles.length > 350) return;
+
+    for(let i=0; i<count; i++) {
+        this.particles.push(new Particle(x, y, color, type));
+    }
+}
+
+
+    updateAndDraw(ctx) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.update();
+            if (p.life <= 0) {
+                this.particles.splice(i, 1);
+            } else {
+                p.draw(ctx);
+            }
+        }
+    }
+}
+
+const Particles = new ParticleSystem();
+
+// --- 4. PARALLAX ENVIRONMENT (PROCEDURAL CITY) ---
+class ParallaxLayer {
+    constructor(speedMult, color, baseY, density) {
+        this.speedMult = speedMult;
+        this.color = color;
+        this.baseY = baseY;
+        this.items = [];
+        this.density = density; // Distance between buildings
+        
+        // Generate initial batch
+        for(let i=0; i<20; i++) {
+            this.generateItem(i * 100);
+        }
+    }
+
+    generateItem(xOffset) {
+        const h = Math.random() * 150 + 50;
+        const w = Math.random() * 60 + 40;
+        this.items.push({
+            x: xOffset,
+            y: this.baseY - h,
+            w: w,
+            h: h,
+            windows: Math.random() > 0.5 // Does this building have lights?
+        });
+    }
+
+    update(gameSpeed) {
+        this.items.forEach(i => {
+            i.x -= gameSpeed * this.speedMult;
+        });
+
+        // Remove old and add new
+        if(this.items[0].x < -200) {
+            this.items.shift();
+            const lastX = this.items[this.items.length-1].x;
+            this.generateItem(lastX + Math.random() * 50 + this.density);
+        }
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        this.items.forEach(i => {
+            ctx.fillRect(i.x, i.y, i.w, i.h);
+            
+            // Draw "Windows" (Cyberpunk details)
+            if(i.windows) {
+                ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+                // Random pattern based on position (deterministic)
+                const seed = Math.floor(i.x); 
+                if (seed % 3 === 0) {
+                   ctx.fillRect(i.x + 5, i.y + 10, i.w - 10, 5); // Horiz stripe
+                } else if (seed % 2 === 0) {
+                   ctx.fillRect(i.x + 10, i.y + 10, 5, i.h - 20); // Vert stripe
+                }
+                ctx.fillStyle = this.color; // Reset
+            }
+        });
+    }
+}
+
+class BackgroundSystem {
+    constructor() {
+        this.layers = [];
+    }
+    
+    init() {
+        // Far Layer (Slow, Darker)
+        this.layers.push(new ParallaxLayer(0.2, '#1a1a2e', H, 10));
+        // Near Layer (Faster, Lighter)
+        this.layers.push(new ParallaxLayer(0.5, '#16213e', H, 50));
+    }
+
+    update(gameSpeed) {
+        this.layers.forEach(l => l.update(gameSpeed));
+    }
+
+    draw(ctx) {
+        // Clear Screen
+        ctx.fillStyle = '#050510';
+        ctx.fillRect(0, 0, W, H);
+        
+        // Draw Retro Sun
+        const sunY = H * 0.4;
+const stage = MOON_STAGES.slice().reverse().find(s => Core.runCredits >= s.at);
+
+ctx.save();
+ctx.beginPath();
+ctx.arc(W/2, sunY, 150, 0, Math.PI * 2);
+
+if (stage.type === 'solid') {
+    const grd = ctx.createLinearGradient(0, 0, 0, sunY + 120);
+    grd.addColorStop(0, stage.color);
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+}
+
+else if (stage.type === 'rainbow') {
+    const grd = ctx.createLinearGradient(W/2 - 150, 0, W/2 + 150, 0);
+    for (let i = 0; i <= 360; i += 60) {
+        grd.addColorStop(i / 360, `hsl(${i},100%,60%)`);
+    }
+    ctx.fillStyle = grd;
+}
+
+else if (stage.type === 'gradient') {
+    const grd = ctx.createRadialGradient(W/2, sunY, 20, W/2, sunY, 150);
+    grd.addColorStop(0, '#ff0000');
+    grd.addColorStop(1, '#000000');
+    ctx.fillStyle = grd;
+}
+
+ctx.fill();
+ctx.restore();
+
+
+        // Draw City Layers
+        this.layers.forEach(l => l.draw(ctx));
+    }
+}
+const World = new BackgroundSystem();
+
+// --- 5. UI MANAGER ---
+const UI = {
+    els: {
+        menu: document.getElementById('menu-layer'),
+        hud: document.getElementById('hud-layer'),
+        shop: document.getElementById('shop-layer'),
+        over: document.getElementById('over-layer'),
+        score: document.getElementById('ui-score'),
+        credits: document.getElementById('ui-credits'),
+        hp: document.getElementById('ui-hp'),
+        finalScore: document.getElementById('final-score'),
+        shopSkins: document.getElementById('shop-skins'),
+        shopSkills: document.getElementById('shop-skills')
+
+    },
+
+    reset() {
+        this.hideAll();
+        this.els.menu.classList.remove('hidden');
+    },
+
+    gameActive() {
+        this.hideAll();
+        this.els.hud.classList.remove('hidden');
+    },
+
+    updateHUD(score, credits, hp) {
+        this.els.score.textContent = Math.floor(score).toString().padStart(6, '0');
+        this.els.credits.textContent = credits;
+        this.els.hp.textContent = hp + '%';
+        // Dynamic color for HP
+        this.els.hp.style.color = hp > 50 ? '#0f0' : (hp > 25 ? '#ff0' : '#f00');
+    },
+
+    gameOver(score) {
+        this.hideAll();
+        this.els.over.classList.remove('hidden');
+        this.els.finalScore.textContent = Math.floor(score);
+    },
+
+    openShop() {
+        this.els.menu.classList.add('hidden');
+        this.els.shop.classList.remove('hidden');
+        // Render Shop Items (Called from Step 3)
+        setTimeout(() => { if(Shop) Shop.render(); }, 0);
+    },
+
+    closeShop() {
+        this.els.shop.classList.add('hidden');
+        this.els.menu.classList.remove('hidden');
+    },
+    
+    toMenu() {
+        this.reset();
+    },
+
+    hideAll() {
+        document.querySelectorAll('.ui-layer').forEach(el => el.classList.add('hidden'));
+    }
+};
+
+// Initialize world on load
+window.addEventListener('load', () => {
+    resize();
+    World.init();
+});
+// --- 6. SHOP & PROGRESSION SYSTEM ---
+
+const SHOP_DATA = [
+    { id: 'mk1', name: 'MK-1 FRAME', type: 'skin', cost: 0, desc: 'Standard issue runner chassis.' },
+    { id: 'phantom', name: 'PHANTOM POINT', type: 'skin', cost: 500, desc: 'Stealth frame. Reduced hitbox.' },
+    { id: 'titan', name: 'TITAN', type: 'skin', cost: 800, desc: 'Heavy plating. Start with +1 HP.' },
+    { id:'star', name:'KIMSTAR', type:'skin', cost:1000, desc:'Cosmic energy frame. lightning rare.'},
+    { id:'bablaza', name:'BABLAZA', type:'skin', cost:1200, desc:'Rearity, but at a price. ultra rare'},
+
+
+    { id: 'mag_pulse', name: 'MAG PULSE', type: 'upgrade', cost: 800, desc: 'Attract credits from further away.' },
+    { id: 'thrusters', name: 'ION JETS', type: 'upgrade', cost: 1200, desc: 'Triple Jump enabled.' }
+];
+
+class ShopManager {
+    constructor() {
+        this.credits = parseInt(localStorage.getItem('omega_creds')) || 0;
+        this.inventory = JSON.parse(localStorage.getItem('omega_inv')) || ['mk1'];
+        this.equipped = localStorage.getItem('omega_skin') || 'mk1';
+        this.upgrades = JSON.parse(localStorage.getItem('omega_ups')) || {};
+    }
+
+    save() {
+        localStorage.setItem('omega_creds', this.credits);
+        localStorage.setItem('omega_inv', JSON.stringify(this.inventory));
+        localStorage.setItem('omega_skin', this.equipped);
+        localStorage.setItem('omega_ups', JSON.stringify(this.upgrades));
+    }
+
+    buy(id) {
+        const item = SHOP_DATA.find(i => i.id === id);
+        if (!item) return;
+
+        if (this.credits >= item.cost) {
+            if (item.type === 'skin' && !this.inventory.includes(id)) {
+                this.credits -= item.cost;
+                this.inventory.push(id);
+                this.equip(id);
+                Audio.playTone(800, 'sine', 0.2); // Success
+            } else if (item.type === 'upgrade' && !this.upgrades[id]) {
+                this.credits -= item.cost;
+                this.upgrades[id] = true;
+                Audio.playTone(1000, 'square', 0.2); // Upgrade sound
+            }
+            this.save();
+            this.render();
+            UI.updateHUD(0, this.credits, 100);
+        } else {
+            Audio.playTone(150, 'sawtooth', 0.2); // Fail
+        }
+    }
+
+    equip(id) {
+        if (this.inventory.includes(id)) {
+            this.equipped = id;
+            this.save();
+            this.render();
+            if (typeof Player !== 'undefined') Player.setSkin(id);
+        }
+    }
+
+    addCredits(amount) {
+        this.credits += amount;
+        this.save();
+        UI.updateHUD(0, this.credits, 100);
+    }
+
+    render() {
+    const skinGrid = document.getElementById('shop-skins');
+    const skillGrid = document.getElementById('shop-skills');
+
+    skinGrid.innerHTML = '';
+    skillGrid.innerHTML = '';
+
+    SHOP_DATA.forEach(item => {
+        const owned = this.inventory.includes(item.id) || this.upgrades[item.id];
+        const isEquipped = this.equipped === item.id;
+
+        const card = document.createElement('div');
+        card.className = `card ${owned ? 'bought' : ''} ${isEquipped ? 'equipped' : ''}`;
+        card.innerHTML = `
+            <h3 style="margin:0; color:${isEquipped ? '#0ff' : '#fff'}">${item.name}</h3>
+            <p style="font-size:0.8rem; color:#aaa">${item.desc}</p>
+            <div style="margin-top:10px; font-weight:bold; color:${owned ? '#0f0' : '#ff0'}">
+                ${owned ? (isEquipped ? 'EQUIPPED' : 'OWNED') : item.cost + ' CR'}
+            </div>
+        `;
+
+        card.onclick = () => {
+            if (owned && item.type === 'skin') this.equip(item.id);
+            else if (!owned) this.buy(item.id);
+        };
+
+        if (item.type === 'skin') skinGrid.appendChild(card);
+        else skillGrid.appendChild(card);
+    });
+}
+
+}
+const Shop = new ShopManager();
+
+// --- 7. PLAYER PHYSICS & CONTROLLER ---
+
+class PlayerController {
+    constructor() {
+        this.w = 40;
+        this.h = 40;
+        this.reset();
+        this.skin = Shop.equipped;
+        
+        // Advanced Physics Props
+        this.coyoteTime = 0; // Frames allowed to jump after falling
+        this.jumpBuffer = 0; // Frames to remember jump input before landing
+    }
+
+    reset() {
+        this.x = 100;
+        this.y = CFG.LANE_Y - this.h;
+        this.vy = 0;
+        this.grounded = true;
+        this.jumps = 0;
+        this.maxJumps = Shop.upgrades['thrusters'] ? 3 : 2;
+        this.dashing = false;
+        this.dashTimer = 0;
+        this.hp = Shop.equipped === 'titan' ? 120 : 100; // Bonus HP for Titan
+        this.invincible = 0;
+        this.rotation = 0;
+    }
+
+    setSkin(id) { this.skin = id; }
+
+    update() {
+        // --- GRAVITY & PHYSICS ---
+        if (!this.dashing) {
+            this.vy += CFG.GRAVITY;
+            this.y += this.vy;
+        } else {
+            this.dashTimer--;
+            if (this.dashTimer <= 0) {
+                this.dashing = false;
+                this.vy = 0; 
+            }
+        }
+
+        // Terminal Velocity
+        if (this.vy > CFG.TERMINAL_VELOCITY) this.vy = CFG.TERMINAL_VELOCITY;
+
+        // Ground Collision
+        const floorY = CFG.LANE_Y - this.h;
+        if (this.y >= floorY) {
+            this.y = floorY;
+            this.vy = 0;
+            this.grounded = true;
+            this.jumps = 0;
+            this.coyoteTime = 5; // Reset Coyote Time
+            
+            // Check Buffer
+            if (this.jumpBuffer > 0) {
+                this.jump(true);
+                this.jumpBuffer = 0;
+            }
+        } else {
+            this.grounded = false;
+            if (this.coyoteTime > 0) this.coyoteTime--;
+        }
+
+        // --- INPUT HANDLING ---
+        
+        // Jump (Press)
+        if (Input.pressed.up) {
+            if (this.grounded || this.coyoteTime > 0) {
+                this.jump(true);
+            } else if (this.jumps < this.maxJumps) {
+                this.jump(false); // Air jump
+            } else {
+                this.jumpBuffer = 5; // Buffer for next landing
+            }
+        }
+
+        // Variable Jump Height (Release)
+        if (!Input.keys.up && this.vy < -5) {
+            this.vy *= 0.5; // Cut jump short
+        }
+
+        // Dash
+        if (Input.pressed.dash && !this.dashing && this.credits > 0) { // Maybe cost energy?
+             // For now, free dash but cooldown logic implied
+             this.dashing = true;
+             this.dashTimer = 15;
+             this.vy = 0;
+             Audio.sfxDash();
+             Particles.emit(this.x, this.y + this.h/2, '#0ff', 5, 1); // Trail
+        }
+
+        // Fast Fall
+        if (Input.keys.down && !this.grounded) {
+            this.vy += 2;
+        }
+
+        // Invincibility Flicker
+        if (this.invincible > 0) this.invincible--;
+    }
+    
+    jump(isGround) {
+        this.vy = CFG.JUMP_FORCE;
+        this.jumps++;
+        this.coyoteTime = 0;
+        Audio.sfxJump();
+        
+        if (isGround) {
+            Particles.emit(this.x + this.w/2, this.y + this.h, '#fff', 5, 0); // Dust
+        } else {
+             // Air jump effect (Ripple)
+             Particles.emit(this.x + this.w/2, this.y + this.h, '#0ff', 1, 2); 
+        }
+    }
+
+    draw(ctx) {
+        if (this.invincible > 0 && Math.floor(Date.now() / 50) % 2 === 0) return;
+
+        ctx.save();
+        ctx.translate(this.x + this.w/2, this.y + this.h/2);
+        
+        // Rotate based on velocity (leaning forward/back)
+        const tilt = (this.vy * 0.05) + (this.dashing ? -0.5 : 0);
+        ctx.rotate(tilt);
+
+        if (this.skin === 'phantom') {
+            // Stealth Look (Triangular)
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#0f0';
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.moveTo(-20, 20);
+            ctx.lineTo(20, 0);
+            ctx.lineTo(-20, -20);
+            ctx.fill();
+            ctx.strokeStyle = '#0f0';
+            ctx.stroke();
+        } else if (this.skin === 'titan') {
+            // Heavy Tank Look
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = 'red';
+            ctx.fillStyle = '#444';
+            ctx.fillRect(-25, -25, 50, 50);
+            ctx.fillStyle = 'red'; // Core
+            ctx.fillRect(-10, -10, 20, 20);
+        } else if (this.skin === 'star') {
+           drawStar(ctx, 0, 0, 22, 5);
+        } else if (this.skin === 'bablaza') {
+           drawBablaza(ctx, 0, 0, 24);
+             spawnBablazaTrail(
+             this.x + this.w / 2 + (Math.random() * 8 - 4),
+             this.y + this.h / 2 + (Math.random() * 8 - 4)
+             );
+
+        } else {
+            // MK-1 (Standard Box with Neon Trim)
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#0ff';
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-20, -20, 40, 40);
+            
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-20, -20, 40, 40);
+            
+            // Eye
+            ctx.fillStyle = '#0ff';
+            ctx.fillRect(5, -10, 15, 5);
+        }
+        
+        ctx.restore();
+    }
+    
+    hit(damage) {
+        if (this.invincible > 0 || this.dashing) return;
+        
+        this.hp -= damage;
+        this.invincible = 60; // 1 sec
+        Audio.sfxCrash();
+        Core.shake = 15;
+        
+        if (this.hp <= 0) Core.gameOver();
+    }
+}
+const Player = new PlayerController();
+
+// --- 8. PROCEDURAL FLOOR (NEON GRID) ---
+
+class FloorRenderer {
+    constructor() {
+        this.offset = 0;
+    }
+
+    update(speed) {
+        this.offset = (this.offset + speed) % 100; // Loop texture
+    }
+
+    draw(ctx) {
+        const y = CFG.LANE_Y;
+        const h = H - y;
+
+        // 1. Glow Line
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#0ff';
+        ctx.strokeStyle = '#0ff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+        ctx.shadowBlur = 0; // Reset
+
+        // 2. Grid Floor (Perspective)
+        ctx.fillStyle = 'rgba(0, 20, 40, 0.8)';
+        ctx.fillRect(0, y, W, h);
+        
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        // Vertical Lines (Perspective)
+        const centerX = W / 2;
+        for (let i = -10; i <= 10; i++) {
+            // Fan out from center horizon
+            let x1 = centerX + (i * 50); 
+            let x2 = centerX + (i * 400); // Much wider at bottom
+            
+            ctx.moveTo(x1, y);
+            ctx.lineTo(x2, H);
+        }
+        
+        // Horizontal Lines (Scrolling)
+        // We draw lines at increasing distances to simulate 3D plane
+        for (let i = 0; i < 10; i++) {
+             // Exponential spacing for depth perception
+             let dist = Math.pow(i, 2) * 10; 
+             let lineY = y + dist + (this.offset * (i * 0.1)); // Parallax movement
+             
+             if(lineY > y && lineY < H) {
+                 ctx.moveTo(0, lineY);
+                 ctx.lineTo(W, lineY);
+             }
+        }
+        ctx.stroke();
+    }
+}
+const Floor = new FloorRenderer();
+// --- 9. ENTITY & OBSTACLE SYSTEM ---
+
+const ENTITY_TYPES = {
+    // Hazards
+    SPIKE: 0,
+    SAW: 1,
+    DRONE: 2,
+    LASER: 3,
+    // Collectibles
+    COIN: 10,
+    HEAL: 11,
+    MAGNET: 12
+};
+
+class Entity {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.markedForDeletion = false;
+        this.w = 40; 
+        this.h = 40;
+        this.passed = false; // For score counting
+        this.oscillation = 0; // For floating movement
+        
+        // Custom Hitboxes based on type
+        if (type === ENTITY_TYPES.SPIKE) { 
+            this.h = 30; this.y += 10; // Lower hitbox
+        } else if (type === ENTITY_TYPES.COIN) {
+            this.w = 20; this.h = 20;
+        }
+    }
+
+    update(speed, player) {
+        this.x -= speed;
+        this.oscillation += 0.1;
+
+        // Cleanup off-screen
+        if (this.x < -100) this.markedForDeletion = true;
+
+        // Dynamic Behavior
+        if (this.type === ENTITY_TYPES.DRONE) {
+            // Bobbing flying enemy
+            this.y += Math.sin(this.oscillation) * 2;
+        } 
+        else if (this.type === ENTITY_TYPES.COIN || this.type === ENTITY_TYPES.HEAL) {
+            // Magnet Effect
+            if (Shop.upgrades['mag_pulse']) {
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < 200) {
+                    this.x += dx * 0.1;
+                    this.y += dy * 0.1;
+                }
+            }
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x + this.w/2, this.y + this.h/2);
+
+        switch (this.type) {
+            case ENTITY_TYPES.SPIKE:
+                ctx.fillStyle = '#ff0055'; // Neon Red
+                ctx.shadowBlur = 10; ctx.shadowColor = '#f00';
+                ctx.beginPath();
+                ctx.moveTo(-20, 20);
+                ctx.lineTo(0, -20);
+                ctx.lineTo(20, 20);
+                ctx.fill();
+                break;
+
+            case ENTITY_TYPES.SAW:
+                ctx.rotate(Date.now() / 100);
+                ctx.fillStyle = '#aaa';
+                ctx.beginPath();
+                // Draw jagged gear
+                for(let i=0; i<8; i++) {
+                    ctx.rotate(Math.PI/4);
+                    ctx.fillRect(-5, -25, 10, 50);
+                }
+                ctx.fillStyle = '#f00';
+                ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+                break;
+
+            case ENTITY_TYPES.DRONE:
+                ctx.fillStyle = '#444';
+                ctx.fillRect(-20, -10, 40, 20);
+                // Red scanning eye
+                const scan = Math.sin(Date.now() / 100) * 10;
+                ctx.fillStyle = '#f00';
+                ctx.shadowBlur = 10; ctx.shadowColor = 'red';
+                ctx.fillRect(scan - 2, -2, 4, 4);
+                break;
+
+            case ENTITY_TYPES.COIN:
+                ctx.rotate(this.oscillation);
+                ctx.fillStyle = '#ffcc00'; // Gold
+                ctx.shadowBlur = 15; ctx.shadowColor = 'gold';
+                ctx.beginPath();
+                ctx.moveTo(0, -10); ctx.lineTo(10, 0);
+                ctx.lineTo(0, 10); ctx.lineTo(-10, 0);
+                ctx.fill();
+                break;
+                
+            case ENTITY_TYPES.HEAL:
+                ctx.fillStyle = '#0f0';
+                ctx.font = '20px Arial';
+                ctx.fillText('+', -5, 5);
+                ctx.strokeStyle = '#0f0';
+                ctx.strokeRect(-10, -10, 20, 20);
+                break;
+        }
+
+        ctx.restore();
+    }
+}
+
+// --- 10. LEVEL DIRECTOR (AI SPAWNER) ---
+
+class LevelDirector {
+    constructor() {
+        this.entities = [];
+        this.timer = 0;
+        this.waveTimer = 0;
+        this.difficulty = 1;
+    }
+
+    reset() {
+        this.entities = [];
+        this.timer = 0;
+        this.difficulty = 1;
+    }
+
+    update(speed, score, player) {
+        // 1. Difficulty Ramping
+        this.difficulty = 1 + (score / 2000); // Gradual increase
+        
+        // 2. Spawn Logic
+        // We spawn based on distance traveled (speed), not just time
+        this.timer += (speed / CFG.SPEED_START); 
+        
+        if (this.timer > (100 / this.difficulty)) {
+            this.spawnPattern();
+            this.timer = 0;
+        }
+
+        // 3. Update Entities
+        this.entities.forEach(e => e.update(speed, player));
+        
+        // 4. Collision Check
+        this.checkCollisions(player);
+
+        // 5. Cleanup
+        this.entities = this.entities.filter(e => !e.markedForDeletion);
+    }
+
+    spawnPattern() {
+        const laneY = CFG.LANE_Y - 40;
+        const r = Math.random();
+        
+        // Decide what to spawn
+        if (r < 0.5) {
+            // Standard Spike
+            this.entities.push(new Entity(W + 100, laneY, ENTITY_TYPES.SPIKE));
+            // Reward: Coin arc above it
+            this.spawnCoinArc(W + 100, laneY);
+        } else if (r < 0.8) {
+            // Drone (Flying)
+            const h = Math.random() > 0.5 ? 50 : 100; // Low or High
+            this.entities.push(new Entity(W + 100, laneY - h, ENTITY_TYPES.DRONE));
+        } else {
+            // Double Saw
+            this.entities.push(new Entity(W + 100, laneY, ENTITY_TYPES.SAW));
+            this.entities.push(new Entity(W + 300, laneY, ENTITY_TYPES.SAW));
+        }
+
+        // Rare Heal Spawn
+        if (Math.random() > 0.95) {
+            this.entities.push(new Entity(W + 400, laneY - 150, ENTITY_TYPES.HEAL));
+        }
+    }
+
+    spawnCoinArc(centerX, centerY) {
+        // Create a parabola of coins over an obstacle
+        for (let i = -2; i <= 2; i++) {
+            const x = centerX + (i * 40);
+            const y = centerY - 100 + (Math.abs(i) * 20); // Arc shape
+            this.entities.push(new Entity(x, y, ENTITY_TYPES.COIN));
+        }
+    }
+
+    draw(ctx) {
+        this.entities.forEach(e => e.draw(ctx));
+    }
+
+    // --- 11. COLLISION ENGINE (AABB) ---
+    checkCollisions(player) {
+        const px = player.x + 10; // Shrink hitbox slightly for forgiveness
+        const py = player.y + 5;
+        const pw = player.w - 20;
+        const ph = player.h - 10;
+
+        this.entities.forEach(e => {
+            if (e.markedForDeletion) return;
+
+            // Simple Box Collision
+            if (px < e.x + e.w &&
+                px + pw > e.x &&
+                py < e.y + e.h &&
+                py + ph > e.y) {
+                
+                // HIT!
+                this.resolveCollision(player, e);
+            }
+        });
+    }
+
+    resolveCollision(player, entity) {
+        if (entity.type >= 10) { 
+            // COLLECTIBLE
+            entity.markedForDeletion = true;
+            if (entity.type === ENTITY_TYPES.COIN) {
+                Shop.addCredits(1);
+                Core.runCredits++;
+                Audio.sfxCoin();
+                Particles.emit(entity.x, entity.y, '#ffcc00', 3, 0); // Sparkle
+            } else if (entity.type === ENTITY_TYPES.HEAL) {
+                player.hp = Math.min(100, player.hp + 20);
+                Audio.playTone(600, 'triangle', 0.3);
+            }
+        } else {
+            // HAZARD
+            if (player.invincible <= 0) {
+                player.hit(20); // 20 damage
+                Particles.emit(player.x, player.y, '#f00', 10, 2); // Blood/Sparks
+                
+                // Screen Shake Trigger
+                Core.shake = 20;
+                
+                // "Freeze Frame" effect for impact (Game Logic slows down momentarily)
+                Core.timeScale = 0.1; 
+                setTimeout(() => Core.timeScale = 1.0, 100);
+            }
+        }
+    }
+}
+
+const Director = new LevelDirector();
+// --- 12. MAIN GAME CORE (THE HEARTBEAT) ---
+
+const Core = {
+    state: 'MENU', // MENU, PLAYING, GAMEOVER
+    frame: 0,
+    score: 0,
+    highScore: parseInt(localStorage.getItem('omega_high')) || 0,
+    speed: CFG.SPEED_START,
+    runCredits: 0,
+    
+    // Game Feel Variables
+    shake: 0,
+    timeScale: 1.0,     // 1.0 = Normal, 0.5 = Slow Mo
+    zoom: 1.0,
+
+    init() {
+        // Initial setup
+        World.init(); 
+        this.loop = this.loop.bind(this);
+        requestAnimationFrame(this.loop);
+    },
+
+    start() {
+        if (this.state === 'PLAYING') return;
+
+        // Reset Systems
+        Player.reset();
+        Director.reset();
+        this.score = 0;
+        this.speed = CFG.SPEED_START;
+        this.shake = 0;
+        this.timeScale = 1.0;
+        this.runCredits = 0;
+        
+        // UI
+        UI.gameActive();
+        
+        // Audio
+        Audio.resume();
+        Audio.startMusic();
+        
+        // Launch Effect
+        Particles.emit(Player.x, Player.y, '#0ff', 20, 2); 
+        this.state = 'PLAYING';
+    },
+
+    gameOver() {
+        this.state = 'GAMEOVER';
+        Audio.stopMusic();
+        
+        // Save High Score
+        if (this.score > this.highScore) {
+            this.highScore = Math.floor(this.score);
+            localStorage.setItem('omega_high', this.highScore);
+        }
+
+        // Award Credits (10% of score converted to currency)
+        const earnings = Math.floor(this.score / 10);
+        Shop.addCredits(earnings);
+
+        UI.gameOver(this.score);
+    },
+
+    // --- UPDATE LOOP (LOGIC) ---
+    update() {
+        // 1. Time Management (Hit Stop)
+        if (this.timeScale < 1.0) {
+            this.timeScale += 0.1; // Recover speed
+            if (this.timeScale > 1.0) this.timeScale = 1.0;
+        }
+
+        // 2. State Logic
+        if (this.state === 'PLAYING') {
+            const dt = this.timeScale; // Delta Time modifier
+            
+            // Difficulty Ramping
+            if (this.speed < CFG.SPEED_MAX) {
+                this.speed += CFG.SPEED_ACCEL * dt;
+            }
+            this.score += (this.speed * 0.1) * dt;
+
+            // Update Entities
+            Player.update(); // Player checks its own inputs
+            Director.update(this.speed * dt, this.score, Player);
+            Floor.update(this.speed * dt);
+            World.update(this.speed * 0.5 * dt); // Background moves slower
+            
+            // UI Update (Throttled for performance)
+            if (this.frame % 5 === 0) {
+                UI.updateHUD(this.score, Shop.credits, Player.hp);
+            }
+        }
+       
+        Input.update(); // Clear "pressed" flags
+
+        // 4. Screen Shake Decay
+        if (this.shake > 0) {
+            this.shake *= 0.9;
+            if (this.shake < 0.5) this.shake = 0;
+        }
+    },
+
+    // --- RENDER LOOP (VISUALS) ---
+    draw() {
+        // 1. Camera Transform (Shake & Zoom)
+        ctx.save();
+        
+        // Center Zoom
+        if (this.speed > 15) this.zoom = 1.02; // Slight zoom at high speeds
+        else this.zoom = 1.0;
+
+        ctx.translate(W/2, H/2);
+        ctx.scale(this.zoom, this.zoom);
+        
+        // Apply Shake
+        if (this.shake > 0) {
+            const dx = (Math.random() - 0.5) * this.shake;
+            const dy = (Math.random() - 0.5) * this.shake;
+            ctx.translate(dx, dy);
+        }
+        
+        ctx.translate(-W/2, -H/2);
+
+        // 2. Draw Background Layers
+        World.draw(ctx);
+
+        // 3. Draw Floor (Neon Grid)
+        Floor.draw(ctx);
+
+        // 4. Draw Game World
+        if (this.state === 'PLAYING' || this.state === 'GAMEOVER') {
+            Director.draw(ctx);
+            Player.draw(ctx);
+            updateBablazaParticles(ctx);
+        }
+
+        // 5. POST-PROCESSING: NEON BLOOM
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        Particles.updateAndDraw(ctx); // Draw particles with additive blend
+        ctx.restore();
+        // Draw particles with additive blend
+        
+        // Add a subtle vignette (darker corners)
+        
+       if (Player.skin !== 'bablaza') {
+          const grad = ctx.createRadialGradient(W/2, H/2, H*0.5, W/2, H/2, H);
+          grad.addColorStop(0, 'transparent');
+          grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0,0,W,H);
+       }   
+    },
+
+loop(time) {
+    if (!this.lastTime) this.lastTime = time;
+
+    const dt = (time - this.lastTime) * 0.06 || 1;
+    this.lastTime = time;
+
+    this.update(dt);
+    this.draw();
+    this.frame++;
+    requestAnimationFrame(this.loop);
+}
+
+
+};
+
+function drawStar(ctx, cx, cy, outer, spikes) {
+    let rot = Math.PI / 2 * 3;
+    let step = Math.PI / spikes;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outer);
+
+    for (let i = 0; i < spikes; i++) {
+        ctx.lineTo(cx + Math.cos(rot) * outer, cy + Math.sin(rot) * outer);
+        rot += step;
+
+        ctx.lineTo(cx + Math.cos(rot) * (outer / 2), cy + Math.sin(rot) * (outer / 2));
+        rot += step;
+    }
+
+    ctx.lineTo(cx, cy - outer);
+    ctx.closePath();
+
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#0ff';
+    ctx.fillStyle = '#0ff';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+function drawDiamond(ctx, cx, cy, r) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r, cy);
+    ctx.lineTo(cx, cy + r);
+    ctx.lineTo(cx - r, cy);
+    ctx.closePath();
+
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = '#f0f';
+    ctx.fillStyle = '#f0f';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+let bablazaTime = 0;
+const bablazaParticles = [];
+
+function drawBablaza(ctx, cx, cy, r) {
+    bablazaTime += 0.08;
+
+    // 🌈 Prismatic outer glow
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = `hsl(${(bablazaTime * 40) % 360},100%,60%)`;
+
+    // 🖤 Black crystal diamond
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r, cy);
+    ctx.lineTo(cx, cy + r);
+    ctx.lineTo(cx - r, cy);
+    ctx.closePath();
+
+    const grad = ctx.createLinearGradient(-r, -r, r, r);
+    grad.addColorStop(0, '#000');
+    grad.addColorStop(0.4, '#111');
+    grad.addColorStop(0.6, '#050505');
+    grad.addColorStop(1, '#000');
+
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // ✨ Animated crystal shimmer lines
+    ctx.strokeStyle = `rgba(255,255,255,${0.15 + Math.sin(bablazaTime) * 0.15})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 🔴 Pulsing red neon core
+    const pulse = 6 + Math.sin(bablazaTime * 3) * 3;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulse, 0, Math.PI * 2);
+    ctx.fillStyle = '#f00';
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#f00';
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+}
+
+function spawnBablazaTrail(x, y) {
+    bablazaParticles.push({
+        x, y,
+        vx: Math.random() * 2 - 1,
+        vy: Math.random() * 2 - 1,
+        life: 30 + Math.random() * 20
+    });
+}
+
+function updateBablazaParticles(ctx) {
+    for (let i = bablazaParticles.length - 1; i >= 0; i--) {
+        const p = bablazaParticles[i];
+
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+
+        ctx.fillStyle = `rgba(255,0,0,${p.life / 50})`;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#f00';
+        ctx.fillRect(p.x, p.y, 3, 3);
+
+        if (p.life <= 0) bablazaParticles.splice(i, 1);
+    }
+}
+
+
+// --- 13. BOOTSTRAP ---
+// Start the Engine once the DOM is ready
+window.onload = () => {
+    Core.init();
+    console.log("GEAR RUN: OMEGA // SYSTEM ONLINE");
+};
+
+</script>
+</body>
+
+</html>
