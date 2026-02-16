@@ -18,6 +18,9 @@
     }
 
     * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+    html, body {
+    touch-action: manipulation;
+}
     
     body {
         margin: 0;
@@ -354,17 +357,41 @@ class InputSystem {
     }
 
     bindTouch() {
-        const l = document.getElementById('touch-l');
-        const r = document.getElementById('touch-r');
+    const l = document.getElementById('touch-l');
+    const r = document.getElementById('touch-r');
 
-        // Right side = Jump
-        r.addEventListener('touchstart', (e) => { e.preventDefault(); if(!this.keys.up) this.pressed.up = true; this.keys.up = true; });
-        r.addEventListener('touchend', (e) => { e.preventDefault(); this.keys.up = false; });
-        
-        // Left side = Dash / Slide
-        l.addEventListener('touchstart', (e) => { e.preventDefault(); this.keys.down = true; });
-        l.addEventListener('touchend', (e) => { e.preventDefault(); this.keys.down = false; });
+    let tapCount = 0;
+    let tapTimer = null;
+
+    function registerTap() {
+        tapCount++;
+
+        clearTimeout(tapTimer);
+        tapTimer = setTimeout(() => {
+            for (let i = 0; i < tapCount; i++) {
+                Input.pressed.up = true;
+            }
+            tapCount = 0;
+        }, 220);
     }
+
+    // RIGHT SIDE → TAP TO JUMP
+    r.addEventListener('touchstart', e => {
+        e.preventDefault();
+        registerTap();
+    }, { passive: false });
+
+    // LEFT SIDE → SLIDE / FAST FALL
+    l.addEventListener('touchstart', e => {
+        e.preventDefault();
+        Input.keys.down = true;
+    }, { passive: false });
+
+    l.addEventListener('touchend', e => {
+        e.preventDefault();
+        Input.keys.down = false;
+    }, { passive: false });
+}
 
     update(dt = 1) {
         // Clear "pressed" flags at end of frame
@@ -1565,6 +1592,8 @@ function updateBablazaParticles(ctx) {
     }
 }
 
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('dblclick', e => e.preventDefault());
 
 // --- 13. BOOTSTRAP ---
 // Start the Engine once the DOM is ready
